@@ -19,5 +19,5 @@ java {
 }
 
 application {
-    mainClass = "org.example.App"
+    mainClass = "org.gradle.research.PublicApiAnalyzer"
 }
