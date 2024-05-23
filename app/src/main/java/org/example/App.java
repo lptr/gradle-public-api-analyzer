@@ -134,10 +134,9 @@ public class App {
         System.out.println("Properties count: " + properties.size());
 
         System.out.println("# Weird setters");
-
-        forEachProperty(properties, (iClass, propertyName, property) -> {
+        forEachProperty(properties, (type, propertyName, property) -> {
             // TODO Should this filter all methods? Should we look at all child types, too?
-            publicMethods.get(iClass).stream()
+            publicMethods.get(type).stream()
                 .filter(Predicate.not(IMethod::isStatic))
                 .filter(method -> method.getNumberOfParameters() == 2)
                 .filter(method -> method.getName().toString().equals(propertyName))
@@ -148,6 +147,13 @@ public class App {
                 })
                 .findFirst()
                 .ifPresent(weirdSetter -> System.out.printf("- `%s`%n", toSimpleSignature(weirdSetter)));
+        });
+
+        System.out.println("# Setter-only properties");
+        forEachProperty(properties, (type, propertyName, property) -> {
+            if (property.getter == null) {
+                System.out.printf("- `%s.%s`%n", toSimpleName(type.getReference()), propertyName);
+            }
         });
     }
 
