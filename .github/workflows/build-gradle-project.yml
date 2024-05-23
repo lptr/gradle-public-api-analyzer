@@ -25,7 +25,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Get Gradle API JAR generated and get the Gradle version
+      - name: Get Gradle version and user home
         id: gradle_info
         run: |
           INFO_OUTPUT=$(./gradlew gradleInfo)
