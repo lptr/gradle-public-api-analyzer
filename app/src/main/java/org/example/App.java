@@ -84,11 +84,10 @@ public class App {
             .collect(ImmutableList.toImmutableList());
         AnalysisScope scope = createScope(classpath);
         ClassHierarchy hierarchy = ClassHierarchyFactory.make(scope);
-        int publicMethodCount = 0;
-        ListMultimap<String, IClass> packages = MultimapBuilder.treeKeys().arrayListValues().build();
+        ListMultimap<String, IClass> packagesToTypes = MultimapBuilder.treeKeys().arrayListValues().build();
         Comparator<IClass> classComparator = Comparator.<IClass, String>comparing(clazz -> clazz.getName().getClassName().toString());
-        ListMultimap<IClass, IMethod> publicMethods = MultimapBuilder.treeKeys(classComparator).arrayListValues().build();
-        Map<IClass, Map<String, Property>> properties = Maps.newTreeMap(classComparator);
+        ListMultimap<IClass, IMethod> typesToMethods = MultimapBuilder.treeKeys(classComparator).arrayListValues().build();
+        Map<IClass, Map<String, Property>> typesToProperties = Maps.newTreeMap(classComparator);
         for (IClass iClass : hierarchy) {
             // Skip non-public types
             if (!iClass.isPublic()) {
@@ -106,13 +105,12 @@ public class App {
                 continue;
             }
 
-            packages.put(pkgName, iClass);
+            packagesToTypes.put(pkgName, iClass);
             for (IMethod declaredMethod : iClass.getDeclaredMethods()) {
                 if (!declaredMethod.isPublic()) {
                     continue;
                 }
-                publicMethodCount++;
-                publicMethods.put(iClass, declaredMethod);
+                typesToMethods.put(iClass, declaredMethod);
 
                 if (declaredMethod.isInit() || declaredMethod.isClinit()) {
                     continue;
@@ -120,20 +118,58 @@ public class App {
 
                 PropertyMethod.from(declaredMethod)
                     .ifPresent(propertyMethod -> {
-                        properties.computeIfAbsent(iClass, __ -> new TreeMap<>())
+                        typesToProperties.computeIfAbsent(iClass, __ -> new TreeMap<>())
                             .computeIfAbsent(propertyMethod.propertyName(), __ -> new Property())
                             .addPropertyMethod(propertyMethod);
                     });
             }
         }
-        System.out.println("# Statistics");
-        System.out.println("Public method count: " + publicMethodCount);
-        System.out.println("Properties count: " + properties.size());
+        printHeader("Public API statistics");
+        System.out.println("- Packages: " + packagesToTypes.keySet().size());
+        System.out.println("- Types: " + packagesToTypes.size());
+        System.out.println("- Methods: " + typesToMethods.size());
+        System.out.println("- Properties: " + typesToProperties.values().stream().mapToInt(Map::size).sum());
 
-        System.out.println("# Weird setters");
-        forEachProperty(properties, (type, propertyName, property) -> {
-            // TODO Should this filter all methods? Should we look at all child types, too?
-            publicMethods.get(type).stream()
+        printHeader("Setter-only properties");
+        forEachProperty(typesToProperties, (type, propertyName, property) -> {
+            if (property.getter == null) {
+                System.out.printf("- `%s.%s`%n", toSimpleName(type.getReference()), propertyName);
+            }
+        });
+
+        var propertiesWithInconsistentSetters = new ArrayList<String>();
+        var propertiesWithAdditionalSetters = new ArrayList<String>();
+        forEachProperty(typesToProperties, (type, propertyName, property) -> {
+            // Ignore properties without a getter
+            if (property.getter == null) {
+                return;
+            }
+            ImmutableSet<TypeReference> types = property.collectTypes();
+            if (types.size() != 1) {
+                String inconsistentGetterDescription = String.format("- `%s` (setter: %s)",
+                    toSimpleSignature(property.getter),
+                    types.stream().filter(Predicate.not(property.getter.getReturnType()::equals))
+                        .map(App::toSimpleName)
+                        .map("`%s`"::formatted)
+                        .collect(Collectors.joining(", ")));
+
+                property.matchingGetterAndSetterType()
+                    .ifPresentOrElse(
+                        matchingType -> propertiesWithAdditionalSetters.add(inconsistentGetterDescription),
+                        () -> propertiesWithInconsistentSetters.add(inconsistentGetterDescription)
+                    );
+            }
+        });
+
+        printHeader("Properties with inconsistent getter/setter types");
+        propertiesWithInconsistentSetters.forEach(System.out::println);
+
+        printHeader("Properties with consistent getter/setter types, but with additional setter types");
+        propertiesWithAdditionalSetters.forEach(System.out::println);
+
+        printHeader("Properties with `propertyName()` setters");
+        forEachProperty(typesToProperties, (type, propertyName, property) -> {
+            typesToMethods.get(type).stream()
                 .filter(Predicate.not(IMethod::isStatic))
                 .filter(method -> method.getNumberOfParameters() == 2)
                 .filter(method -> method.getName().toString().equals(propertyName))
@@ -145,13 +181,12 @@ public class App {
                 .findFirst()
                 .ifPresent(weirdSetter -> System.out.printf("- `%s`%n", toSimpleSignature(weirdSetter)));
         });
+    }
 
-        System.out.println("# Setter-only properties");
-        forEachProperty(properties, (type, propertyName, property) -> {
-            if (property.getter == null) {
-                System.out.printf("- `%s.%s`%n", toSimpleName(type.getReference()), propertyName);
-            }
-        });
+    private static void printHeader(String header) {
+        System.out.println();
+        System.out.println("# " + header);
+        System.out.println();
     }
 
     private static void forEachProperty(Map<IClass, Map<String, Property>> properties, TriConsumer<IClass, String, Property> consumer) {
@@ -280,6 +315,17 @@ public class App {
                         .map(method -> method.getParameterType(1))
                 )
                 .collect(ImmutableSet.toImmutableSet());
+        }
+
+        public Optional<TypeReference> matchingGetterAndSetterType() {
+            if (getter == null) {
+                return Optional.empty();
+            }
+            TypeReference getterType = getter.getReturnType();
+            return setters.stream()
+                .map(method -> method.getParameterType(1))
+                .filter(setterType -> setterType.equals(getterType))
+                .findFirst();
         }
     }
 
