@@ -42,7 +42,7 @@ jobs:
       - name: Convert Markdown to HTML
         uses: jaywcjlove/markdown-to-html-cli@v4.1.0
         with:
-          source: build/report/report.md
+          source: app/build/report/report.md
           output: ./_site/index.html
           github-corners: https://github.com/lptr/gradle-public-api-analyzer
 
