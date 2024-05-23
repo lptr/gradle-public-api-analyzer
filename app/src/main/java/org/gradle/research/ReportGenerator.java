@@ -98,13 +98,6 @@ public class ReportGenerator {
             }
         });
 
-        printHeader("Fluent setters");
-        forEachProperty(typesToProperties, (type, propertyName, property) ->
-            property.setters.stream()
-                .filter(setter -> !setter.getReturnType().equals(TypeReference.Void))
-                .forEach(setter -> writer.printf("- `%s`%n", toSimpleSignature(setter)))
-        );
-
         var propertiesWithInconsistentSetters = new ArrayList<String>();
         var propertiesWithAdditionalSetters = new ArrayList<String>();
         forEachProperty(typesToProperties, (type, propertyName, property) -> {
@@ -148,6 +141,13 @@ public class ReportGenerator {
                 })
                 .findFirst()
                 .ifPresent(weirdSetter -> writer.printf("- `%s`%n", toSimpleSignature(weirdSetter))));
+
+        printHeader("Fluent setters");
+        forEachProperty(typesToProperties, (type, propertyName, property) ->
+            property.setters.stream()
+                .filter(setter -> !setter.getReturnType().equals(TypeReference.Void))
+                .forEach(setter -> writer.printf("- `%s`%n", toSimpleSignature(setter)))
+        );
 
         printHeader("Lazy properties with non-abstract getters");
         IClass providerType = hierarchy.lookupClass(TypeReference.findOrCreate(ClassLoaderReference.Application, "Lorg/gradle/api/provider/Provider"));
