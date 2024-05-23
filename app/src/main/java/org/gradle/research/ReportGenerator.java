@@ -33,11 +33,12 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class ReportGenerator {
+    private final ApiTypeFilter apiTypeFilter;
     private final List<File> classpath;
-
     private final PrintWriter writer;
 
-    public ReportGenerator(List<File> classpath, PrintWriter writer) {
+    public ReportGenerator(ApiTypeFilter apiTypeFilter, List<File> classpath, PrintWriter writer) {
+        this.apiTypeFilter = apiTypeFilter;
         this.classpath = classpath;
         this.writer = writer;
     }
@@ -59,7 +60,7 @@ public class ReportGenerator {
                 continue;
             }
             // Skip internal APIs
-            if (!PublicApiDetector.isPublicApi(iClass)) {
+            if (!apiTypeFilter.includeType(iClass)) {
                 continue;
             }
 

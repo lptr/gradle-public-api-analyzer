@@ -37,7 +37,31 @@ jobs:
           echo "GRADLE_USER_HOME=$GRADLE_USER_HOME" >> $GITHUB_ENV
 
       - name: Generate report
-        run: ./gradlew app:run --args="--classpath ${{ env.GRADLE_USER_HOME }}/caches/${{ env.GRADLE_VERSION }}/generated-gradle-jars/gradle-api-${{ env.GRADLE_VERSION }}.jar --output build/report/report.md --title 'Public API report — Gradle ${{ env.GRADLE_VERSION }}'"
+        run: |
+          ./gradlew app:run --args=" \
+            --classpath ${{ env.GRADLE_USER_HOME }}/caches/${{ env.GRADLE_VERSION }}/generated-gradle-jars/gradle-api-${{ env.GRADLE_VERSION }}.jar \
+            --output build/report/report.md \
+            --title 'Public API report — Gradle ${{ env.GRADLE_VERSION }}' \
+            --ignore-package org.gradle.ide \
+            --ignore-package org.gradle.plugins.ide \
+            --ignore-package org.gradle.nativeplatform \
+            --ignore-package org.gradle.language.c \
+            --ignore-package org.gradle.language.cpp \
+            --ignore-package org.gradle.language.nativeplatform \
+            --ignore-package org.gradle.language.objectivec \
+            --ignore-package org.gradle.language.objectivecpp \
+            --ignore-package org.gradle.language.rc \
+            --ignore-package org.gradle.language.swift \
+            --ignore-package org.gradle.api.artifacts \
+            --ignore-package org.gradle.tooling \
+            --ignore-package org.gradle.api.publish \
+            --ignore-package org.gradle.plugins.signing \
+            --ignore-type org.gradle.api.tasks.TaskInputs \
+            --ignore-type org.gradle.api.tasks.TaskOutputs \
+            --ignore-type org.gradle.api.model.ObjectFactory \
+            --ignore-type org.gradle.api.file.FileTreeElement \
+            --ignore-type org.gradle.api.file.FileCopyDetails \
+          "
 
       - name: Make site directory
         run: |

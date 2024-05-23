@@ -4,14 +4,16 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.ibm.wala.classLoader.IClass;
 import com.ibm.wala.core.util.strings.Atom;
 
 import javax.annotation.Nonnull;
+import java.util.List;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
-public class PublicApiDetector {
+public class ApiTypeFilter {
     private static final ImmutableList<Pattern> publicApiPackages = Stream.of(
             "org/gradle/",
             "org/gradle/api/.*",
@@ -51,19 +53,25 @@ public class PublicApiDetector {
         .map(Pattern::compile)
         .collect(ImmutableList.toImmutableList());
 
-    private static final ImmutableList<Pattern> ignoredPackages = Stream.of(
+    private static final ImmutableList<Pattern> defaultIgnoredPackages = Stream.of(
             ".*/internal/.*"
         )
         .map(Pattern::compile)
         .collect(ImmutableList.toImmutableList());
 
-    private static final LoadingCache<IClass, Boolean> publicApiLookup = CacheBuilder.newBuilder()
+    private final ImmutableList<Pattern> ignoredPackages;
+    private final ImmutableSet<String> ignoredTypes;
+
+    private final LoadingCache<IClass, Boolean> publicApiLookup = CacheBuilder.newBuilder()
         .build(new CacheLoader<>() {
             @Nonnull
             @Override
             public Boolean load(@Nonnull IClass type) {
                 Atom packageName = type.getName().getPackage();
                 if (packageName == null) {
+                    return false;
+                }
+                if (ignoredTypes.contains(type.getName().toString())) {
                     return false;
                 }
                 var packageWithTrailingSlash = packageName + "/";
@@ -74,7 +82,19 @@ public class PublicApiDetector {
             }
         });
 
-    public static boolean isPublicApi(IClass type) {
+    public ApiTypeFilter(List<String> ignoredPackagePatterns, List<String> ignoredTypes) {
+        this.ignoredPackages = Stream.concat(
+                defaultIgnoredPackages.stream(),
+                ignoredPackagePatterns.stream()
+                    .map(ignoredPackage -> ignoredPackage.replace('.', '/') + "/.*")
+                    .map(Pattern::compile))
+            .collect(ImmutableList.toImmutableList());
+        this.ignoredTypes = ignoredTypes.stream()
+            .map(ignoredType -> "L" + ignoredType.replace('.', '/'))
+            .collect(ImmutableSet.toImmutableSet());
+    }
+
+    public boolean includeType(IClass type) {
         return publicApiLookup.getUnchecked(type);
     }
 }

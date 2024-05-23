@@ -15,13 +15,32 @@ import java.util.concurrent.Callable;
 @Command(name = "PublicApiAnalyzer", description = "Generates a report for provided JAR files.")
 public class PublicApiAnalyzer implements Callable<Integer> {
 
-    @Option(names = {"--classpath", "--jar"}, required = true, description = "JAR or directory to analyze")
+    @Option(
+        names = {"--classpath", "--jar"},
+        required = true,
+        description = "JAR or directory to analyze")
     private List<File> classpath;
 
-    @Option(names = "--output", required = true, description = "Output file for the report")
+    @Option(
+        names = "--ignore-package",
+        description = "Ignore packages matching the given regular expression (e.g. 'org.gradle.caching'); subpackages are also ignored")
+    private List<String> ignoredPackages = List.of();
+
+    @Option(
+        names = "--ignore-type",
+        description = "Ignore types with the given FQCN (e.g. 'org.gradle.caching.configuration.BuildCache')")
+    private List<String> ignoredTypes = List.of();
+
+    @Option(
+        names = "--output",
+        required = true,
+        description = "Output file for the report")
     private File output;
 
-    @Option(names = "--title", description = "Title of the report", defaultValue = "Public API Report")
+    @Option(
+        names = "--title",
+        description = "Title of the report",
+        defaultValue = "Public API Report")
     private String title;
 
     public static void main(String... args) {
@@ -36,7 +55,28 @@ public class PublicApiAnalyzer implements Callable<Integer> {
         try (PrintWriter writer = new PrintWriter(output)) {
             writer.println("# " + title);
             writer.println();
-            new ReportGenerator(classpath, writer)
+            if (ignoredPackages.isEmpty()) {
+                writer.println("No packages were ignored during analysis.");
+            } else {
+                writer.println("Ignored packages during analysis:");
+                ignoredPackages.stream()
+                    .map("- `%s`"::formatted)
+                    .forEach(writer::println);
+            }
+            writer.println();
+
+            if (ignoredTypes.isEmpty()) {
+                writer.println("No types were ignored during analysis.");
+            } else {
+                writer.println("Ignored types during analysis:");
+                ignoredTypes.stream()
+                    .map("- `%s`"::formatted)
+                    .forEach(writer::println);
+            }
+            writer.println();
+
+            ApiTypeFilter apiTypeFilter = new ApiTypeFilter(ignoredPackages, ignoredTypes);
+            new ReportGenerator(apiTypeFilter, classpath, writer)
                 .generateReport();
         }
         System.out.println("Report generated at " + output.getAbsolutePath());
