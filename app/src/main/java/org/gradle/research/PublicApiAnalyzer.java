@@ -164,6 +164,13 @@ public class PublicApiAnalyzer implements Callable<Integer> {
             }
         });
 
+        printHeader(writer, "Fluent setters");
+        forEachProperty(typesToProperties, (type, propertyName, property) ->
+            property.setters.stream()
+                .filter(setter -> !setter.getReturnType().equals(TypeReference.Void))
+                .forEach(setter -> writer.printf("- `%s`%n", toSimpleSignature(setter)))
+        );
+
         var propertiesWithInconsistentSetters = new ArrayList<String>();
         var propertiesWithAdditionalSetters = new ArrayList<String>();
         forEachProperty(typesToProperties, (type, propertyName, property) -> {
