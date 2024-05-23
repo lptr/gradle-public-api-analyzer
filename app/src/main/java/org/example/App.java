@@ -4,9 +4,10 @@
 package org.example;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ListMultimap;
+import com.google.common.collect.Maps;
 import com.google.common.collect.MultimapBuilder;
-import com.google.common.collect.SetMultimap;
 import com.ibm.wala.classLoader.BinaryDirectoryTreeModule;
 import com.ibm.wala.classLoader.IClass;
 import com.ibm.wala.classLoader.IMethod;
@@ -23,10 +24,14 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.function.Predicate;
 import java.util.jar.JarFile;
 import java.util.regex.Pattern;
@@ -86,7 +91,7 @@ public class App {
         ListMultimap<String, IClass> packages = MultimapBuilder.treeKeys().arrayListValues().build();
         Comparator<IClass> classComparator = Comparator.<IClass, String>comparing(clazz -> clazz.getName().getClassName().toString());
         ListMultimap<IClass, IMethod> publicMethods = MultimapBuilder.treeKeys(classComparator).arrayListValues().build();
-        SetMultimap<IClass, String> properties = MultimapBuilder.treeKeys(classComparator).treeSetValues().build();
+        Map<IClass, Map<String, Property>> properties = Maps.newTreeMap(classComparator);
         for (IClass iClass : hierarchy) {
             // Skip non-public types
             if (!iClass.isPublic()) {
@@ -110,15 +115,18 @@ public class App {
                     continue;
                 }
                 publicMethodCount++;
-                System.out.println(declaredMethod.getSignature());
                 publicMethods.put(iClass, declaredMethod);
 
                 if (declaredMethod.isInit() || declaredMethod.isClinit()) {
                     continue;
                 }
 
-                toPropertyName(declaredMethod)
-                    .ifPresent(propertyName -> properties.put(iClass, propertyName));
+                PropertyMethod.from(declaredMethod)
+                    .ifPresent(propertyMethod -> {
+                        properties.computeIfAbsent(iClass, __ -> new TreeMap<>())
+                            .computeIfAbsent(propertyMethod.propertyName(), __ -> new Property())
+                            .addPropertyMethod(propertyMethod);
+                    });
             }
         }
         System.out.println("# Statistics");
@@ -126,21 +134,33 @@ public class App {
         System.out.println("Properties count: " + properties.size());
 
         System.out.println("# Weird setters");
-        properties.forEach((iClass, propertyName) -> {
+
+        forEachProperty(properties, (iClass, propertyName, property) -> {
             // TODO Should this filter all methods? Should we look at all child types, too?
             publicMethods.get(iClass).stream()
-                .filter(IMethod::isPublic)
                 .filter(Predicate.not(IMethod::isStatic))
                 .filter(method -> method.getNumberOfParameters() == 2)
                 .filter(method -> method.getName().toString().equals(propertyName))
                 .filter(method -> {
                     TypeReference parameterType = method.getParameterType(1);
                     return !parameterType.getName().toString().equals("Lgroovy/lang/Closure")
-                        && !parameterType.getName().toString().equals("Lorg/gradle/api/Action");
+                           && !parameterType.getName().toString().equals("Lorg/gradle/api/Action");
                 })
                 .findFirst()
                 .ifPresent(weirdSetter -> System.out.printf("- `%s`%n", toSimpleSignature(weirdSetter)));
         });
+    }
+
+    private static void forEachProperty(Map<IClass, Map<String, Property>> properties, TriConsumer<IClass, String, Property> consumer) {
+        properties.forEach((iClass, classProperties) -> {
+            classProperties.forEach((propertyName, property) -> {
+                consumer.accept(iClass, propertyName, property);
+            });
+        });
+    }
+
+    private interface TriConsumer<T, U, V> {
+        void accept(T t, U u, V v);
     }
 
     private static String toSimpleSignature(IMethod method) {
@@ -209,23 +229,55 @@ public class App {
         return name.replace(';', ' ').trim();
     }
 
-    private static Optional<String> toPropertyName(IMethod method) {
-        String methodName = method.getName().toString();
-        if (method.isStatic()) {
+    private sealed interface PropertyMethod {
+        String propertyName();
+
+        static Optional<PropertyMethod> from(IMethod method) {
+            if (method.isStatic()) {
+                return Optional.empty();
+            }
+            String methodName = method.getName().toString();
+            if (method.getNumberOfParameters() == 1 && !method.getReturnType().equals(TypeReference.Void)) {
+                if (methodName.startsWith("get") && methodName.length() > 3) {
+                    return Optional.of(new Getter(Character.toLowerCase(methodName.charAt(3)) + methodName.substring(4), method));
+                }
+                if (methodName.startsWith("is") && methodName.length() > 2) {
+                    return Optional.of(new Getter(Character.toLowerCase(methodName.charAt(2)) + methodName.substring(3), method));
+                }
+            }
+            if (method.getNumberOfParameters() == 2 && methodName.startsWith("set") && methodName.length() > 3) {
+                return Optional.of(new Setter(Character.toLowerCase(methodName.charAt(3)) + methodName.substring(4), method));
+            }
             return Optional.empty();
         }
-        if (method.getNumberOfParameters() == 1 && !method.getReturnType().equals(TypeReference.Void)) {
-            if (methodName.startsWith("get") && methodName.length() > 3) {
-                return Optional.of(Character.toLowerCase(methodName.charAt(3)) + methodName.substring(4));
-            }
-            if (methodName.startsWith("is") && methodName.length() > 2) {
-                return Optional.of(Character.toLowerCase(methodName.charAt(2)) + methodName.substring(3));
+    }
+
+    private record Getter(String propertyName, IMethod method) implements PropertyMethod {
+    }
+
+    private record Setter(String propertyName, IMethod method) implements PropertyMethod {
+    }
+
+    private static class Property {
+        private IMethod getter;
+        private final List<IMethod> setters = new ArrayList<>();
+
+        public void addPropertyMethod(PropertyMethod propertyMethod) {
+            switch (propertyMethod) {
+                case Getter getterMethod -> this.getter = getterMethod.method();
+                case Setter setterMethod -> this.setters.add(setterMethod.method());
             }
         }
-        if (method.getNumberOfParameters() == 2 && methodName.startsWith("set") && methodName.length() > 3) {
-            return Optional.of(Character.toLowerCase(methodName.charAt(3)) + methodName.substring(4));
+
+        public ImmutableSet<TypeReference> collectTypes() {
+            return Stream.concat(
+                    Stream.ofNullable(getter)
+                        .map(IMethod::getReturnType),
+                    setters.stream()
+                        .map(method -> method.getParameterType(1))
+                )
+                .collect(ImmutableSet.toImmutableSet());
         }
-        return Optional.empty();
     }
 
     private static AnalysisScope createScope(Collection<Path> classpath) throws IOException {
