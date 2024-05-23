@@ -79,9 +79,6 @@ public class App {
         .collect(ImmutableList.toImmutableList());
 
     public static void main(String[] args) throws IOException, ClassHierarchyException {
-        args = new String[]{
-            "/Users/lptr/.gradle/caches/8.8-rc-1/generated-gradle-jars/gradle-api-8.8-rc-1.jar"
-        };
         ImmutableList<Path> classpath = Arrays.stream(args)
             .map(Paths::get)
             .collect(ImmutableList.toImmutableList());
