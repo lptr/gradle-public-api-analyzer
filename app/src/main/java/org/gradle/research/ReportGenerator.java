@@ -83,12 +83,13 @@ public class ReportGenerator {
             }
         }
 
+        printHeader("Summary");
         writer.println("- Packages: " + packagesToTypes.keySet().size());
         writer.println("- Types: " + packagesToTypes.size());
         writer.println("- Methods: " + typesToMethods.size());
         writer.println("- Properties: " + typesToProperties.values().stream().mapToInt(Map::size).sum());
 
-        printHeader(writer, "Setters without getters");
+        printHeader("Setters without getters");
         forEachProperty(typesToProperties, (type, propertyName, property) -> {
             if (property.getter == null) {
                 property.setters.forEach(setter ->
@@ -97,7 +98,7 @@ public class ReportGenerator {
             }
         });
 
-        printHeader(writer, "Fluent setters");
+        printHeader("Fluent setters");
         forEachProperty(typesToProperties, (type, propertyName, property) ->
             property.setters.stream()
                 .filter(setter -> !setter.getReturnType().equals(TypeReference.Void))
@@ -128,13 +129,13 @@ public class ReportGenerator {
             }
         });
 
-        printHeader(writer, "Properties with inconsistent getter/setter types");
+        printHeader("Properties with inconsistent getter/setter types");
         propertiesWithInconsistentSetters.forEach(writer::println);
 
-        printHeader(writer, "Properties with consistent getter/setter types, but with additional setter types");
+        printHeader("Properties with consistent getter/setter types, but with additional setter types");
         propertiesWithAdditionalSetters.forEach(writer::println);
 
-        printHeader(writer, "Properties with `propertyName()` setters");
+        printHeader("Properties with `propertyName()` setters");
         forEachProperty(typesToProperties, (type, propertyName, property) ->
             typesToMethods.get(type).stream()
                 .filter(Predicate.not(IMethod::isStatic))
@@ -148,7 +149,7 @@ public class ReportGenerator {
                 .findFirst()
                 .ifPresent(weirdSetter -> writer.printf("- `%s`%n", toSimpleSignature(weirdSetter))));
 
-        printHeader(writer, "Lazy properties with non-abstract getters");
+        printHeader("Lazy properties with non-abstract getters");
         IClass providerType = hierarchy.lookupClass(TypeReference.findOrCreate(ClassLoaderReference.Application, "Lorg/gradle/api/provider/Provider"));
         // TODO This should probably be FileCollection to match Provider
         IClass configurableFileCollectionType = hierarchy.lookupClass(TypeReference.findOrCreate(ClassLoaderReference.Application, "Lorg/gradle/api/file/ConfigurableFileCollection"));
@@ -173,7 +174,7 @@ public class ReportGenerator {
         });
     }
 
-    private static void printHeader(PrintWriter writer, String header) {
+    private void printHeader(String header) {
         writer.println();
         writer.println("## " + header);
         writer.println();
