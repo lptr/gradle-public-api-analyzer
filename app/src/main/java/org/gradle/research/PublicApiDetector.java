@@ -51,6 +51,12 @@ public class PublicApiDetector {
         .map(Pattern::compile)
         .collect(ImmutableList.toImmutableList());
 
+    private static final ImmutableList<Pattern> ignoredPackages = Stream.of(
+            ".*/internal/.*"
+        )
+        .map(Pattern::compile)
+        .collect(ImmutableList.toImmutableList());
+
     private static final LoadingCache<IClass, Boolean> publicApiLookup = CacheBuilder.newBuilder()
         .build(new CacheLoader<>() {
             @Nonnull
@@ -63,7 +69,8 @@ public class PublicApiDetector {
                 var packageWithTrailingSlash = packageName + "/";
                 return publicApiPackages.stream()
                            .anyMatch(pattern -> pattern.matcher(packageWithTrailingSlash).matches())
-                       && !packageWithTrailingSlash.contains("/internal/");
+                       && ignoredPackages.stream()
+                           .noneMatch(pattern -> pattern.matcher(packageWithTrailingSlash).matches());
             }
         });
 
