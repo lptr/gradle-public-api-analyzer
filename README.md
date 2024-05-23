@@ -6,7 +6,7 @@ Produces a report in Markdown format that highlights problematic API elements in
 ## Usage
 
 ```shell
-./gradlew :run --args="lib1.jar lib2.jar ..."
+./gradlew :run --args="--classpath lib1.jar --classpath lib2.jar --output report.md"
 ```
 
 You can pass the JARs from the Gradle distribution, or the generated API JAR. 
@@ -14,5 +14,5 @@ You can pass the JARs from the Gradle distribution, or the generated API JAR.
 ## Example
 
 ```shell
-./gradlew :run --args="~/.gradle/caches/8.8-rc-1/generated-gradle-jars/gradle-api-8.8-rc-1.jar"
+./gradlew :run --args="--classpath ~/.gradle/caches/8.8-rc-1/generated-gradle-jars/gradle-api-8.8-rc-1.jar --output report.md"
 ```

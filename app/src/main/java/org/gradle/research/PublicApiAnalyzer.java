@@ -18,27 +18,38 @@ import com.ibm.wala.ipa.cha.ClassHierarchyException;
 import com.ibm.wala.ipa.cha.ClassHierarchyFactory;
 import com.ibm.wala.types.ClassLoaderReference;
 import com.ibm.wala.types.TypeReference;
+import picocli.CommandLine;
+import picocli.CommandLine.Command;
+import picocli.CommandLine.Option;
 
+import java.io.File;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
+import java.util.concurrent.Callable;
 import java.util.function.Predicate;
 import java.util.jar.JarFile;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public class PublicApiAnalyzer {
+@Command(name = "PublicApiAnalyzer", description = "Generates a report for provided JAR files.")
+public class PublicApiAnalyzer implements Callable<Integer> {
+
+    @Option(names = "--classpath", required = true, description = "JAR or directory to analyze")
+    private List<File> classpath;
+
+    @Option(names = "--output", required = true, description = "Output file for the report")
+    private File output;
+
     private static final ImmutableList<Pattern> publicApiPackages = Stream.of(
             "org/gradle/[^/]*",
             "org/gradle/api/.*",
@@ -78,10 +89,26 @@ public class PublicApiAnalyzer {
         .map(Pattern::compile)
         .collect(ImmutableList.toImmutableList());
 
-    public static void main(String[] args) throws IOException, ClassHierarchyException {
-        ImmutableList<Path> classpath = Arrays.stream(args)
-            .map(Paths::get)
-            .collect(ImmutableList.toImmutableList());
+    public static void main(String... args) {
+        int exitCode = new CommandLine(new PublicApiAnalyzer()).execute(args);
+        System.exit(exitCode);
+    }
+
+    @Override
+    public Integer call() throws Exception {
+        generateReport();
+        return 0;
+    }
+
+    private void generateReport() throws IOException, ClassHierarchyException {
+        output.getParentFile().mkdirs();
+        try (PrintWriter writer = new PrintWriter(output)) {
+            generateReport(writer);
+        }
+        System.out.println("Report generated at " + output.getAbsolutePath());
+    }
+
+    private void generateReport(PrintWriter writer) throws IOException, ClassHierarchyException {
         AnalysisScope scope = createScope(classpath);
         ClassHierarchy hierarchy = ClassHierarchyFactory.make(scope);
         ListMultimap<String, IClass> packagesToTypes = MultimapBuilder.treeKeys().arrayListValues().build();
@@ -124,16 +151,16 @@ public class PublicApiAnalyzer {
                     });
             }
         }
-        printHeader("Public API statistics");
-        System.out.println("- Packages: " + packagesToTypes.keySet().size());
-        System.out.println("- Types: " + packagesToTypes.size());
-        System.out.println("- Methods: " + typesToMethods.size());
-        System.out.println("- Properties: " + typesToProperties.values().stream().mapToInt(Map::size).sum());
+        printHeader(writer, "Public API statistics");
+        writer.println("- Packages: " + packagesToTypes.keySet().size());
+        writer.println("- Types: " + packagesToTypes.size());
+        writer.println("- Methods: " + typesToMethods.size());
+        writer.println("- Properties: " + typesToProperties.values().stream().mapToInt(Map::size).sum());
 
-        printHeader("Setter-only properties");
+        printHeader(writer, "Setter-only properties");
         forEachProperty(typesToProperties, (type, propertyName, property) -> {
             if (property.getter == null) {
-                System.out.printf("- `%s.%s`%n", toSimpleName(type.getReference()), propertyName);
+                writer.printf("- `%s.%s`%n", toSimpleName(type.getReference()), propertyName);
             }
         });
 
@@ -161,13 +188,13 @@ public class PublicApiAnalyzer {
             }
         });
 
-        printHeader("Properties with inconsistent getter/setter types");
-        propertiesWithInconsistentSetters.forEach(System.out::println);
+        printHeader(writer, "Properties with inconsistent getter/setter types");
+        propertiesWithInconsistentSetters.forEach(writer::println);
 
-        printHeader("Properties with consistent getter/setter types, but with additional setter types");
-        propertiesWithAdditionalSetters.forEach(System.out::println);
+        printHeader(writer, "Properties with consistent getter/setter types, but with additional setter types");
+        propertiesWithAdditionalSetters.forEach(writer::println);
 
-        printHeader("Properties with `propertyName()` setters");
+        printHeader(writer, "Properties with `propertyName()` setters");
         forEachProperty(typesToProperties, (type, propertyName, property) -> {
             typesToMethods.get(type).stream()
                 .filter(Predicate.not(IMethod::isStatic))
@@ -179,14 +206,14 @@ public class PublicApiAnalyzer {
                            && !parameterType.getName().toString().equals("Lorg/gradle/api/Action");
                 })
                 .findFirst()
-                .ifPresent(weirdSetter -> System.out.printf("- `%s`%n", toSimpleSignature(weirdSetter)));
+                .ifPresent(weirdSetter -> writer.printf("- `%s`%n", toSimpleSignature(weirdSetter)));
         });
     }
 
-    private static void printHeader(String header) {
-        System.out.println();
-        System.out.println("# " + header);
-        System.out.println();
+    private static void printHeader(PrintWriter writer, String header) {
+        writer.println();
+        writer.println("# " + header);
+        writer.println();
     }
 
     private static void forEachProperty(Map<IClass, Map<String, Property>> properties, TriConsumer<IClass, String, Property> consumer) {
@@ -329,23 +356,23 @@ public class PublicApiAnalyzer {
         }
     }
 
-    private static AnalysisScope createScope(Collection<Path> classpath) throws IOException {
+    private static AnalysisScope createScope(Collection<File> classpath) throws IOException {
         AnalysisScope scope = AnalysisScopeReader.instance.makePrimordialScope(null);
-        classpath.forEach(path -> addToScope(scope, path));
+        classpath.forEach(classpathEntry -> addToScope(scope, classpathEntry));
         return scope;
     }
 
-    private static void addToScope(AnalysisScope scope, Path path) {
+    private static void addToScope(AnalysisScope scope, File classpathEntry) {
         ClassLoaderReference loader = scope.getLoader(AnalysisScope.APPLICATION);
-        if (Files.isRegularFile(path)) {
+        if (Files.isRegularFile(classpathEntry.toPath())) {
             try {
-                JarFile jar = new JarFile(path.toFile(), false);
+                JarFile jar = new JarFile(classpathEntry, false);
                 scope.addToScope(loader, jar);
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }
         } else {
-            scope.addToScope(loader, new BinaryDirectoryTreeModule(path.toFile()));
+            scope.addToScope(loader, new BinaryDirectoryTreeModule(classpathEntry));
         }
     }
 }
