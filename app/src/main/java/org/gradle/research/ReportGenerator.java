@@ -146,6 +146,30 @@ public class ReportGenerator {
                 })
                 .findFirst()
                 .ifPresent(weirdSetter -> writer.printf("- `%s`%n", toSimpleSignature(weirdSetter))));
+
+        printHeader(writer, "Lazy properties with non-abstract getters");
+        IClass providerType = hierarchy.lookupClass(TypeReference.findOrCreate(ClassLoaderReference.Application, "Lorg/gradle/api/provider/Provider"));
+        // TODO This should probably be FileCollection to match Provider
+        IClass configurableFileCollectionType = hierarchy.lookupClass(TypeReference.findOrCreate(ClassLoaderReference.Application, "Lorg/gradle/api/file/ConfigurableFileCollection"));
+        forEachProperty(typesToProperties, (type, propertyName, property) -> {
+            if (property.getter == null) {
+                return;
+            }
+            if (type.isInterface()) {
+                return;
+            }
+            if (property.getter.isAbstract()) {
+                return;
+            }
+            IClass getterType = hierarchy.lookupClass(property.getter.getReturnType());
+            if (getterType == null) {
+                return;
+            }
+            if (hierarchy.isAssignableFrom(providerType, getterType)
+                || hierarchy.isAssignableFrom(configurableFileCollectionType, getterType)) {
+                writer.printf("- `%s`%n", toSimpleSignature(property.getter));
+            }
+        });
     }
 
     private static void printHeader(PrintWriter writer, String header) {
