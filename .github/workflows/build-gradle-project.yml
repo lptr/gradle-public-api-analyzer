@@ -23,22 +23,21 @@ jobs:
           java-version: '21'
 
       - name: Setup Gradle
-        uses: gradle/gradle-build-action@v3
+        uses: gradle/actions/setup-gradle@v3
 
       - name: Get Gradle API JAR generated and get the Gradle version
-        id: gradle_version
+        id: gradle_info
         run: |
-          VERSION_OUTPUT=$(./gradlew --version)
-          echo "$VERSION_OUTPUT"
-          GRADLE_VERSION=$(echo "$VERSION_OUTPUT" | grep '^Gradle ' | awk '{print $2}')
+          INFO_OUTPUT=$(./gradlew gradleInfo)
+          GRADLE_VERSION=$(echo "$INFO_OUTPUT" | grep '^GRADLE_VERSION: ' | awk '{print $2}')
+          GRADLE_USER_HOME=$(echo "$INFO_OUTPUT" | grep '^GRADLE_USER_HOME: ' | awk '{print $2}')
           echo "Gradle version: $GRADLE_VERSION"
+          echo "Gradle user home: $GRADLE_USER_HOME"
           echo "GRADLE_VERSION=$GRADLE_VERSION" >> $GITHUB_ENV
-
-      - name: Use Gradle version
-        run: echo "The Gradle version is ${{ env.GRADLE_VERSION }}"
+          echo "GRADLE_USER_HOME=$GRADLE_USER_HOME" >> $GITHUB_ENV
 
       - name: Generate report
-        run: ./gradlew app:run --args="--classpath ~/.gradle/caches/${{ env.GRADLE_VERSION }}/generated-gradle-jars/gradle-api-${{ env.GRADLE_VERSION }}.jar --output build/report/report.md"
+        run: ./gradlew app:run --args="--classpath ${{ env.GRADLE_USER_HOME }}/caches/${{ env.GRADLE_VERSION }}/generated-gradle-jars/gradle-api-${{ env.GRADLE_VERSION }}.jar --output build/report/report.md"
 
       - name: Convert Markdown to HTML
         uses: jaywcjlove/markdown-to-html-cli@v4.1.0

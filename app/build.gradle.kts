@@ -22,3 +22,10 @@ java {
 application {
     mainClass = "org.gradle.research.PublicApiAnalyzer"
 }
+
+tasks.register("gradleInfo") {
+    doLast {
+        println("GRADLE_VERSION: ${gradle.gradleVersion}")
+        println("GRADLE_USER_HOME: ${gradle.gradleUserHomeDir}")
+    }
+}
