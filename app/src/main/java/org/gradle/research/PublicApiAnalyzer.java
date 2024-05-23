@@ -3,7 +3,6 @@
  */
 package org.gradle.research;
 
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ListMultimap;
 import com.google.common.collect.Maps;
@@ -37,7 +36,6 @@ import java.util.TreeMap;
 import java.util.concurrent.Callable;
 import java.util.function.Predicate;
 import java.util.jar.JarFile;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -49,45 +47,6 @@ public class PublicApiAnalyzer implements Callable<Integer> {
 
     @Option(names = "--output", required = true, description = "Output file for the report")
     private File output;
-
-    private static final ImmutableList<Pattern> publicApiPackages = Stream.of(
-            "org/gradle/",
-            "org/gradle/api/.*",
-            "org/gradle/authentication/.*",
-            "org/gradle/build/.*",
-            "org/gradle/buildconfiguration/.*",
-            "org/gradle/buildinit/.*",
-            "org/gradle/caching/.*",
-            "org/gradle/concurrent/.*",
-            "org/gradle/deployment/.*",
-            "org/gradle/external/javadoc/.*",
-            "org/gradle/ide/.*",
-            "org/gradle/ivy/.*",
-            "org/gradle/jvm/.*",
-            "org/gradle/language/.*",
-            "org/gradle/maven/.*",
-            "org/gradle/nativeplatform/.*",
-            "org/gradle/normalization/.*",
-            "org/gradle/platform/.*",
-            "org/gradle/plugin/devel/.*",
-            "org/gradle/plugin/use/",
-            "org/gradle/plugin/management/",
-            "org/gradle/plugins/.*",
-            "org/gradle/process/.*",
-            "org/gradle/testfixtures/.*",
-            "org/gradle/testing/jacoco/.*",
-            "org/gradle/tooling/.*",
-            "org/gradle/swiftpm/.*",
-            "org/gradle/model/.*",
-            "org/gradle/testkit/.*",
-            "org/gradle/testing/.*",
-            "org/gradle/vcs/.*",
-            "org/gradle/work/.*",
-            "org/gradle/workers/.*",
-            "org/gradle/util/.*"
-        )
-        .map(Pattern::compile)
-        .collect(ImmutableList.toImmutableList());
 
     public static void main(String... args) {
         int exitCode = new CommandLine(new PublicApiAnalyzer()).execute(args);
@@ -101,7 +60,7 @@ public class PublicApiAnalyzer implements Callable<Integer> {
     }
 
     private void generateReport() throws IOException, ClassHierarchyException {
-        output.getParentFile().mkdirs();
+        assert output.getParentFile().mkdirs();
         try (PrintWriter writer = new PrintWriter(output)) {
             generateReport(writer);
         }
@@ -112,7 +71,7 @@ public class PublicApiAnalyzer implements Callable<Integer> {
         AnalysisScope scope = createScope(classpath);
         ClassHierarchy hierarchy = ClassHierarchyFactory.make(scope);
         ListMultimap<String, IClass> packagesToTypes = MultimapBuilder.treeKeys().arrayListValues().build();
-        Comparator<IClass> classComparator = Comparator.<IClass, String>comparing(clazz -> clazz.getName().getClassName().toString());
+        Comparator<IClass> classComparator = Comparator.comparing(clazz -> clazz.getName().getClassName().toString());
         ListMultimap<IClass, IMethod> typesToMethods = MultimapBuilder.treeKeys(classComparator).arrayListValues().build();
         Map<IClass, Map<String, Property>> typesToProperties = Maps.newTreeMap(classComparator);
         for (IClass iClass : hierarchy) {
@@ -124,13 +83,12 @@ public class PublicApiAnalyzer implements Callable<Integer> {
             if (iClass.getName().getClassName().toString().contains("$")) {
                 continue;
             }
-            String pkgName = String.valueOf(iClass.getName().getPackage());
-            if (!isPublicPackage(pkgName)) {
+            // Skip internal APIs
+            if (!PublicApiDetector.isPublicApi(iClass)) {
                 continue;
             }
-            ;
 
-            packagesToTypes.put(pkgName, iClass);
+            packagesToTypes.put(String.valueOf(iClass.getName().getPackage()), iClass);
             for (IMethod declaredMethod : iClass.getDeclaredMethods()) {
                 if (!declaredMethod.isPublic()) {
                     continue;
@@ -142,13 +100,13 @@ public class PublicApiAnalyzer implements Callable<Integer> {
                 }
 
                 PropertyMethod.from(declaredMethod)
-                    .ifPresent(propertyMethod -> {
+                    .ifPresent(propertyMethod ->
                         typesToProperties.computeIfAbsent(iClass, __ -> new TreeMap<>())
                             .computeIfAbsent(propertyMethod.propertyName(), __ -> new Property())
-                            .addPropertyMethod(propertyMethod);
-                    });
+                            .addPropertyMethod(propertyMethod));
             }
         }
+
         printHeader(writer, "Public API statistics");
         writer.println("- Packages: " + packagesToTypes.keySet().size());
         writer.println("- Types: " + packagesToTypes.size());
@@ -202,7 +160,7 @@ public class PublicApiAnalyzer implements Callable<Integer> {
         propertiesWithAdditionalSetters.forEach(writer::println);
 
         printHeader(writer, "Properties with `propertyName()` setters");
-        forEachProperty(typesToProperties, (type, propertyName, property) -> {
+        forEachProperty(typesToProperties, (type, propertyName, property) ->
             typesToMethods.get(type).stream()
                 .filter(Predicate.not(IMethod::isStatic))
                 .filter(method -> method.getNumberOfParameters() == 2)
@@ -213,16 +171,7 @@ public class PublicApiAnalyzer implements Callable<Integer> {
                            && !parameterType.getName().toString().equals("Lorg/gradle/api/Action");
                 })
                 .findFirst()
-                .ifPresent(weirdSetter -> writer.printf("- `%s`%n", toSimpleSignature(weirdSetter)));
-        });
-    }
-
-    private static boolean isPublicPackage(String pkgName) {
-        var packageWithTrailingSlash = pkgName + "/";
-        if (publicApiPackages.stream().noneMatch(pattern -> pattern.matcher(packageWithTrailingSlash).matches())) {
-            return false;
-        }
-        return !packageWithTrailingSlash.contains("/internal/");
+                .ifPresent(weirdSetter -> writer.printf("- `%s`%n", toSimpleSignature(weirdSetter))));
     }
 
     private static void printHeader(PrintWriter writer, String header) {
@@ -232,11 +181,8 @@ public class PublicApiAnalyzer implements Callable<Integer> {
     }
 
     private static void forEachProperty(Map<IClass, Map<String, Property>> properties, TriConsumer<IClass, String, Property> consumer) {
-        properties.forEach((iClass, classProperties) -> {
-            classProperties.forEach((propertyName, property) -> {
-                consumer.accept(iClass, propertyName, property);
-            });
-        });
+        properties.forEach((iClass, classProperties) -> classProperties.forEach((propertyName, property) ->
+            consumer.accept(iClass, propertyName, property)));
     }
 
     private interface TriConsumer<T, U, V> {
@@ -319,17 +265,21 @@ public class PublicApiAnalyzer implements Callable<Integer> {
             String methodName = method.getName().toString();
             if (method.getNumberOfParameters() == 1 && !method.getReturnType().equals(TypeReference.Void)) {
                 if (methodName.startsWith("get") && methodName.length() > 3) {
-                    return Optional.of(new Getter(Character.toLowerCase(methodName.charAt(3)) + methodName.substring(4), method));
+                    return Optional.of(new Getter(getPropertyName(methodName, 3), method));
                 }
                 if (methodName.startsWith("is") && methodName.length() > 2) {
-                    return Optional.of(new Getter(Character.toLowerCase(methodName.charAt(2)) + methodName.substring(3), method));
+                    return Optional.of(new Getter(getPropertyName(methodName, 2), method));
                 }
             }
             if (method.getNumberOfParameters() == 2 && methodName.startsWith("set") && methodName.length() > 3) {
-                return Optional.of(new Setter(Character.toLowerCase(methodName.charAt(3)) + methodName.substring(4), method));
+                return Optional.of(new Setter(getPropertyName(methodName, 3), method));
             }
             return Optional.empty();
         }
+    }
+
+    private static String getPropertyName(String methodName, int prefixLength) {
+        return Character.toLowerCase(methodName.charAt(prefixLength)) + methodName.substring(prefixLength + 1);
     }
 
     private record Getter(String propertyName, IMethod method) implements PropertyMethod {
