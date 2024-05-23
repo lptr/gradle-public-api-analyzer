@@ -39,6 +39,10 @@ jobs:
       - name: Generate report
         run: ./gradlew app:run --args="--classpath ${{ env.GRADLE_USER_HOME }}/caches/${{ env.GRADLE_VERSION }}/generated-gradle-jars/gradle-api-${{ env.GRADLE_VERSION }}.jar --output build/report/report.md"
 
+      - name: Make site directory
+        run: |
+          mkdir ./_site
+
       - name: Convert Markdown to HTML
         uses: jaywcjlove/markdown-to-html-cli@v4.1.0
         with:
