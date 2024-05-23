@@ -51,7 +51,7 @@ public class PublicApiAnalyzer implements Callable<Integer> {
     private File output;
 
     private static final ImmutableList<Pattern> publicApiPackages = Stream.of(
-            "org/gradle/[^/]*",
+            "org/gradle/",
             "org/gradle/api/.*",
             "org/gradle/authentication/.*",
             "org/gradle/build/.*",
@@ -70,8 +70,8 @@ public class PublicApiAnalyzer implements Callable<Integer> {
             "org/gradle/normalization/.*",
             "org/gradle/platform/.*",
             "org/gradle/plugin/devel/.*",
-            "org/gradle/plugin/use/[^/]*",
-            "org/gradle/plugin/management/[^/]*",
+            "org/gradle/plugin/use/",
+            "org/gradle/plugin/management/",
             "org/gradle/plugins/.*",
             "org/gradle/process/.*",
             "org/gradle/testfixtures/.*",
@@ -125,12 +125,10 @@ public class PublicApiAnalyzer implements Callable<Integer> {
                 continue;
             }
             String pkgName = String.valueOf(iClass.getName().getPackage());
-            if (publicApiPackages.stream().noneMatch(pattern -> pattern.matcher(pkgName).matches())) {
+            if (!isPublicPackage(pkgName)) {
                 continue;
             }
-            if (pkgName.contains("/internal/") || pkgName.endsWith("/internal")) {
-                continue;
-            }
+            ;
 
             packagesToTypes.put(pkgName, iClass);
             for (IMethod declaredMethod : iClass.getDeclaredMethods()) {
@@ -217,6 +215,14 @@ public class PublicApiAnalyzer implements Callable<Integer> {
                 .findFirst()
                 .ifPresent(weirdSetter -> writer.printf("- `%s`%n", toSimpleSignature(weirdSetter)));
         });
+    }
+
+    private static boolean isPublicPackage(String pkgName) {
+        var packageWithTrailingSlash = pkgName + "/";
+        if (publicApiPackages.stream().noneMatch(pattern -> pattern.matcher(packageWithTrailingSlash).matches())) {
+            return false;
+        }
+        return !packageWithTrailingSlash.contains("/internal/");
     }
 
     private static void printHeader(PrintWriter writer, String header) {
