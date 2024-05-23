@@ -1,0 +1,66 @@
+name: Build Gradle project
+
+on:
+  push:
+
+permissions:
+  id-token: write
+  pages: write
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout project sources
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v3
+
+      - name: Get Gradle API JAR generated and get the Gradle version
+        id: gradle_version
+        run: |
+          VERSION_OUTPUT=$(./gradlew --version)
+          echo "$VERSION_OUTPUT"
+          GRADLE_VERSION=$(echo "$VERSION_OUTPUT" | grep '^Gradle ' | awk '{print $2}')
+          echo "Gradle version: $GRADLE_VERSION"
+          echo "GRADLE_VERSION=$GRADLE_VERSION" >> $GITHUB_ENV
+
+      - name: Use Gradle version
+        run: echo "The Gradle version is ${{ env.GRADLE_VERSION }}"
+
+      - name: Generate report
+        run: ./gradlew app:run --args="--classpath ~/.gradle/caches/${{ env.GRADLE_VERSION }}/generated-gradle-jars/gradle-api-${{ env.GRADLE_VERSION }}.jar --output build/report/report.md"
+
+      - name: Convert Markdown to HTML
+        uses: jaywcjlove/markdown-to-html-cli@v4.1.0
+        with:
+          source: build/report/report.md
+          output: ./_site/index.html
+          github-corners: https://github.com/lptr/gradle-public-api-analyzer
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub pages
+        uses: actions/upload-pages-artifact@v3
+
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
