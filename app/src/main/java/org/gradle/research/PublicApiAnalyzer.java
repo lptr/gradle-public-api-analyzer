@@ -157,10 +157,12 @@ public class PublicApiAnalyzer implements Callable<Integer> {
         writer.println("- Methods: " + typesToMethods.size());
         writer.println("- Properties: " + typesToProperties.values().stream().mapToInt(Map::size).sum());
 
-        printHeader(writer, "Setter-only properties");
+        printHeader(writer, "Setters without getters");
         forEachProperty(typesToProperties, (type, propertyName, property) -> {
             if (property.getter == null) {
-                writer.printf("- `%s.%s`%n", toSimpleName(type.getReference()), propertyName);
+                property.setters.forEach(setter ->
+                    writer.printf("- `%s`%n", toSimpleSignature(setter))
+                );
             }
         });
 
