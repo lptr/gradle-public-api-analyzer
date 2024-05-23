@@ -37,7 +37,7 @@ jobs:
           echo "GRADLE_USER_HOME=$GRADLE_USER_HOME" >> $GITHUB_ENV
 
       - name: Generate report
-        run: ./gradlew app:run --args="--classpath ${{ env.GRADLE_USER_HOME }}/caches/${{ env.GRADLE_VERSION }}/generated-gradle-jars/gradle-api-${{ env.GRADLE_VERSION }}.jar --output build/report/report.md"
+        run: ./gradlew app:run --args="--classpath ${{ env.GRADLE_USER_HOME }}/caches/${{ env.GRADLE_VERSION }}/generated-gradle-jars/gradle-api-${{ env.GRADLE_VERSION }}.jar --output build/report/report.md --title 'Public API report — Gradle ${{ env.GRADLE_VERSION }}'"
 
       - name: Make site directory
         run: |

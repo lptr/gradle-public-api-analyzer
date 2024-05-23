@@ -15,11 +15,14 @@ import java.util.concurrent.Callable;
 @Command(name = "PublicApiAnalyzer", description = "Generates a report for provided JAR files.")
 public class PublicApiAnalyzer implements Callable<Integer> {
 
-    @Option(names = "--classpath", required = true, description = "JAR or directory to analyze")
+    @Option(names = {"--classpath", "--jar"}, required = true, description = "JAR or directory to analyze")
     private List<File> classpath;
 
     @Option(names = "--output", required = true, description = "Output file for the report")
     private File output;
+
+    @Option(names = "--title", description = "Title of the report", defaultValue = "Public API Report")
+    private String title;
 
     public static void main(String... args) {
         int exitCode = new CommandLine(new PublicApiAnalyzer()).execute(args);
@@ -28,9 +31,13 @@ public class PublicApiAnalyzer implements Callable<Integer> {
 
     @Override
     public Integer call() throws Exception {
-        assert output.getParentFile().mkdirs();
+        //noinspection ResultOfMethodCallIgnored
+        output.getParentFile().mkdirs();
         try (PrintWriter writer = new PrintWriter(output)) {
-            new ReportGenerator(classpath, writer).generateReport();
+            writer.println("# " + title);
+            writer.println();
+            new ReportGenerator(classpath, writer)
+                .generateReport();
         }
         System.out.println("Report generated at " + output.getAbsolutePath());
         return 0;

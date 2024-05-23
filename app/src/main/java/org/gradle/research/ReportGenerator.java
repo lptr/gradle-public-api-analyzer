@@ -82,7 +82,6 @@ public class ReportGenerator {
             }
         }
 
-        printHeader(writer, "Public API statistics");
         writer.println("- Packages: " + packagesToTypes.keySet().size());
         writer.println("- Types: " + packagesToTypes.size());
         writer.println("- Methods: " + typesToMethods.size());
@@ -151,7 +150,7 @@ public class ReportGenerator {
 
     private static void printHeader(PrintWriter writer, String header) {
         writer.println();
-        writer.println("# " + header);
+        writer.println("## " + header);
         writer.println();
     }
 
