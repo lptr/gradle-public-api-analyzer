@@ -42,6 +42,7 @@ jobs:
             --classpath ${{ env.GRADLE_USER_HOME }}/caches/${{ env.GRADLE_VERSION }}/generated-gradle-jars/gradle-api-${{ env.GRADLE_VERSION }}.jar \
             --output build/report/report.md \
             --title 'Public API report — Gradle ${{ env.GRADLE_VERSION }}' \
+            --ignore-deprecated \
             --ignore-package org.gradle.ide \
             --ignore-package org.gradle.plugins.ide \
             --ignore-package org.gradle.nativeplatform \

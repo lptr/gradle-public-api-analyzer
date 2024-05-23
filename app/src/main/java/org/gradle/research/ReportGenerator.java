@@ -13,7 +13,9 @@ import com.ibm.wala.ipa.cha.ClassHierarchy;
 import com.ibm.wala.ipa.cha.ClassHierarchyException;
 import com.ibm.wala.ipa.cha.ClassHierarchyFactory;
 import com.ibm.wala.types.ClassLoaderReference;
+import com.ibm.wala.types.TypeName;
 import com.ibm.wala.types.TypeReference;
+import com.ibm.wala.types.annotations.Annotation;
 
 import java.io.File;
 import java.io.IOException;
@@ -34,11 +36,17 @@ import java.util.stream.Stream;
 
 public class ReportGenerator {
     private final ApiTypeFilter apiTypeFilter;
+    private final boolean ignoreDeprecated;
     private final List<File> classpath;
     private final PrintWriter writer;
 
-    public ReportGenerator(ApiTypeFilter apiTypeFilter, List<File> classpath, PrintWriter writer) {
+    public ReportGenerator(
+        ApiTypeFilter apiTypeFilter,
+        boolean ignoreDeprecated,
+        List<File> classpath,
+        PrintWriter writer) {
         this.apiTypeFilter = apiTypeFilter;
+        this.ignoreDeprecated = ignoreDeprecated;
         this.classpath = classpath;
         this.writer = writer;
     }
@@ -63,10 +71,18 @@ public class ReportGenerator {
             if (!apiTypeFilter.includeType(iClass)) {
                 continue;
             }
+            // Skip deprecated types
+            if (ignoreDeprecated && hasDeprecatedAnnotation(iClass.getAnnotations())) {
+                continue;
+            }
 
             packagesToTypes.put(String.valueOf(iClass.getName().getPackage()), iClass);
             for (IMethod declaredMethod : iClass.getDeclaredMethods()) {
                 if (!declaredMethod.isPublic()) {
+                    continue;
+                }
+                // Skip deprecated methods
+                if (ignoreDeprecated && hasDeprecatedAnnotation(declaredMethod.getAnnotations())) {
                     continue;
                 }
                 typesToMethods.put(iClass, declaredMethod);
@@ -172,6 +188,14 @@ public class ReportGenerator {
                 writer.printf("- `%s`%n", toSimpleSignature(property.getter));
             }
         });
+    }
+
+    private static boolean hasDeprecatedAnnotation(Collection<Annotation> annotations) {
+        return annotations.stream()
+            .map(Annotation::getType)
+            .map(TypeReference::getName)
+            .map(TypeName::toString)
+            .anyMatch("Ljava/lang/Deprecated"::equals);
     }
 
     private void printHeader(String header) {

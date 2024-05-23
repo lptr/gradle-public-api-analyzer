@@ -32,6 +32,11 @@ public class PublicApiAnalyzer implements Callable<Integer> {
     private List<String> ignoredTypes = List.of();
 
     @Option(
+        names = "--ignore-deprecated",
+        description = "Ignore deprecated types and members")
+    private boolean ignoreDeprecated = false;
+
+    @Option(
         names = "--output",
         required = true,
         description = "Output file for the report")
@@ -75,8 +80,15 @@ public class PublicApiAnalyzer implements Callable<Integer> {
             }
             writer.println();
 
+            if (ignoreDeprecated) {
+                writer.println("Deprecated types and members were **ignored** during analysis.");
+            } else {
+                writer.println("Deprecated types and members were **analyzed**.");
+            }
+            writer.println();
+
             ApiTypeFilter apiTypeFilter = new ApiTypeFilter(ignoredPackages, ignoredTypes);
-            new ReportGenerator(apiTypeFilter, classpath, writer)
+            new ReportGenerator(apiTypeFilter, ignoreDeprecated, classpath, writer)
                 .generateReport();
         }
         System.out.println("Report generated at " + output.getAbsolutePath());
